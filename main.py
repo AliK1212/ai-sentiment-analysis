@@ -63,10 +63,45 @@ class TextInput(BaseModel):
     text: str = Field(..., min_length=1, max_length=5000)
     include_confidence_scores: bool = Field(default=False)
 
+class BatchTextInput(BaseModel):
+    texts: List[str] = Field(..., min_items=1, max_items=100)
+    include_confidence_scores: bool = Field(default=False)
+
 @app.get("/")
 async def root():
     """Health check endpoint."""
     return {"status": "ok", "message": "Sentiment Analysis API is running"}
+
+@app.post("/analyze/batch")
+async def analyze_batch(input_data: BatchTextInput):
+    """Analyze sentiment of multiple texts in batch."""
+    try:
+        results = []
+        for text in input_data.texts:
+            result = await analyzer.analyze_text(
+                text,
+                input_data.include_confidence_scores
+            )
+            if "error" in result:
+                results.append({
+                    "error": result["error"],
+                    "sentiment": "neutral",
+                    "processing_time": 0.5
+                })
+            else:
+                results.append(result)
+        return {"results": results}
+    except Exception as e:
+        logger.error(f"Error in analyze_batch: {str(e)}")
+        logger.error(traceback.format_exc())
+        return {
+            "error": str(e),
+            "results": [{
+                "error": str(e),
+                "sentiment": "neutral",
+                "processing_time": 0.5
+            } for _ in input_data.texts]
+        }
 
 @app.post("/analyze")
 async def analyze_sentiment(input_data: TextInput):
