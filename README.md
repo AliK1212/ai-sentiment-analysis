@@ -1,13 +1,19 @@
-# Sentiment Analysis API
+# AI Sentiment Analysis
 
-A powerful sentiment analysis API built with FastAPI and Hugging Face's DistilBERT model. This API provides real-time sentiment analysis of text with confidence scores and processing time metrics.
+A sophisticated sentiment analysis service that uses an ensemble of state-of-the-art models to provide highly accurate sentiment analysis. Built with FastAPI, this service combines multiple NLP approaches including transformer models, rule-based analysis, and traditional NLP techniques.
 
-## Features
+## Key Features
 
-- **Real-time Sentiment Analysis**: Analyze text sentiment using state-of-the-art NLP models
-- **Confidence Scores**: Get detailed confidence scores for positive, negative, and neutral sentiments
-- **Batch Processing**: Analyze multiple texts in a single request
-- **Processing Time Metrics**: Track analysis performance with processing time information
+- **Ensemble Model Approach**: Combines multiple models for superior accuracy:
+  - DistilBERT: Fast and efficient transformer model
+  - RoBERTa: Advanced transformer model optimized for social media
+  - VADER: Rule-based sentiment analysis
+  - TextBlob: Traditional NLP approach
+- **Smart Text Preprocessing**: Enhanced text cleaning while preserving meaningful elements
+- **Weighted Predictions**: Intelligent combination of multiple model predictions
+- **Accurate Neutral Detection**: Improved detection of neutral sentiment
+- **Batch Processing**: Analyze multiple texts efficiently
+- **Processing Time Metrics**: Track performance with detailed timing information
 - **CORS Support**: Built-in CORS middleware for cross-origin requests
 - **Modern UI**: Beautiful React-based interface with interactive features
 
@@ -15,8 +21,9 @@ A powerful sentiment analysis API built with FastAPI and Hugging Face's DistilBE
 
 - **Backend**:
   - FastAPI: High-performance web framework
-  - Hugging Face Transformers: State-of-the-art NLP models
-  - DistilBERT: Lightweight, efficient BERT model
+  - Multiple Transformer Models: DistilBERT and RoBERTa
+  - VADER Sentiment: Rule-based analysis
+  - TextBlob: Natural language processing toolkit
   - Pydantic: Data validation
   - Uvicorn: ASGI server
 
@@ -46,11 +53,11 @@ POST /analyze
 {
   "sentiment": "positive",
   "confidence_scores": {
-    "positive": 0.92,
-    "negative": 0.05,
-    "neutral": 0.03
+    "positive": 0.85,
+    "negative": 0.10,
+    "neutral": 0.05
   },
-  "processing_time": 0.156
+  "processing_time": 0.256
 }
 ```
 
@@ -74,21 +81,21 @@ POST /analyze/batch
     {
       "sentiment": "positive",
       "confidence_scores": {
-        "positive": 0.92,
-        "negative": 0.05,
-        "neutral": 0.03
+        "positive": 0.85,
+        "negative": 0.10,
+        "neutral": 0.05
       }
     },
     {
       "sentiment": "negative",
       "confidence_scores": {
         "positive": 0.15,
-        "negative": 0.80,
-        "neutral": 0.05
+        "negative": 0.75,
+        "neutral": 0.10
       }
     }
   ],
-  "processing_time": 0.312
+  "processing_time": 0.512
 }
 ```
 
@@ -96,138 +103,80 @@ POST /analyze/batch
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| MODEL_NAME | Hugging Face model identifier | "distilbert-base-uncased-finetuned-sst-2-english" |
-| CACHE_DIR | Directory for model caching | "./model_cache" |
+| HOST | Server host address | "0.0.0.0" |
+| PORT | Server port number | 8000 |
+| CACHE_DIR | Directory for model caching | ".cache" |
 | MAX_LENGTH | Maximum text length | 512 |
-| BATCH_SIZE | Batch processing size | 32 |
-| PORT | Server port | 8000 |
-| HOST | Server host | "0.0.0.0" |
+| BATCH_SIZE | Batch size for processing | 32 |
+| DISTILBERT_MODEL | DistilBERT model identifier | "distilbert-base-uncased-finetuned-sst-2-english" |
+| ROBERTA_MODEL | RoBERTa model identifier | "cardiffnlp/twitter-roberta-base-sentiment-latest" |
+| DISTILBERT_WEIGHT | Weight for DistilBERT predictions | 0.3 |
+| ROBERTA_WEIGHT | Weight for RoBERTa predictions | 0.3 |
+| VADER_WEIGHT | Weight for VADER predictions | 0.2 |
+| TEXTBLOB_WEIGHT | Weight for TextBlob predictions | 0.2 |
+| ALLOWED_ORIGINS | Comma-separated list of allowed CORS origins | "http://localhost:3000,http://localhost:8000" |
 
-## Getting Started
+## Installation
 
-1. **Clone the Repository**:
+1. Clone the repository
+2. Install dependencies:
 ```bash
-git clone <repository-url>
-cd sentiment-analysis-api
-```
-
-2. **Set Up Environment**:
-```bash
-python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
 pip install -r requirements.txt
 ```
 
-3. **Configure Environment Variables**:
-Create a `.env` file with your configuration:
-```env
-MODEL_NAME=distilbert-base-uncased-finetuned-sst-2-english
-CACHE_DIR=./model_cache
-MAX_LENGTH=512
-BATCH_SIZE=32
-PORT=8000
-HOST=0.0.0.0
-```
-
-4. **Run with Docker**:
+3. Run the service:
 ```bash
-docker-compose up sentiment-analysis-api
+uvicorn main:app --reload
 ```
 
-Or run locally:
-```bash
-uvicorn main:app --reload --port 8000
-```
+## Model Weights
 
-## Error Handling
+The ensemble approach uses the following weights for combining predictions:
+- DistilBERT: 30%
+- RoBERTa: 30%
+- VADER: 20%
+- TextBlob: 20%
 
-The API includes comprehensive error handling:
+This combination provides optimal accuracy across different types of text:
+- Formal writing
+- Social media content
+- Customer reviews
+- News articles
+- Casual conversations
 
-- **400 Bad Request**: Invalid input text or parameters
-- **422 Validation Error**: Request body validation failures
-- **500 Internal Server Error**: Model loading or processing errors
+## Example Use Cases
 
-Example error response:
+1. **Customer Feedback Analysis**:
 ```json
 {
-  "detail": "Text exceeds maximum length of 512 characters"
+  "text": "The new feature is amazing! Much better than before.",
+  "include_confidence_scores": true
 }
 ```
 
-## Performance Considerations
-
-- The model is loaded once at startup and cached
-- Batch processing is more efficient for multiple texts
-- Text length affects processing time
-- First request may be slower due to model loading
-
-## UI Features
-
-The included React UI provides:
-- Interactive text input with single and batch modes
-- Real-time sentiment analysis
-- Confidence score visualization
-- Example cases with explanations
-- Batch processing interface with:
-  - Dynamic text input fields
-  - Add/remove text entries
-  - Batch example cases
-  - Individual results for each text
-- Tooltips for understanding scores
-- Copy-to-clipboard functionality
-- Responsive design
-- Loading states and error handling
-
-## Batch Processing
-
-The API and UI support efficient batch processing of multiple texts:
-
-### Benefits
-- **Efficiency**: Process multiple texts in a single API call
-- **Consistency**: Get uniform analysis across all texts
-- **Performance**: Reduced overhead compared to multiple single requests
-
-### Batch Size Limits
-- Maximum texts per batch: 100
-- Maximum text length: 512 characters per text
-- Optimal batch size: 32 texts (configurable)
-
-### Example Use Cases
-1. **Customer Feedback Analysis**:
-   ```json
-   {
-     "texts": [
-       "The customer service was excellent!",
-       "Product quality needs improvement",
-       "Shipping was fast and reliable"
-     ]
-   }
-   ```
-
 2. **Social Media Monitoring**:
-   ```json
-   {
-     "texts": [
-       "Love the new features! #greatapp",
-       "App keeps crashing after update",
-       "Nice interface design"
-     ]
-   }
-   ```
+```json
+{
+  "texts": [
+    "Love the new features! #greatapp 😍",
+    "This update is terrible, nothing works anymore 😡",
+    "Interesting changes, need time to get used to them 🤔"
+  ]
+}
+```
 
-3. **Survey Response Analysis**:
-   ```json
-   {
-     "texts": [
-       "Very satisfied with the service",
-       "Could be better but works fine",
-       "Not what I expected"
-     ]
-   }
-   ```
+3. **Business Reviews**:
+```json
+{
+  "text": "Great service but slightly expensive. Staff was very friendly.",
+  "include_confidence_scores": true
+}
+```
 
-### Best Practices
-1. **Optimal Batch Size**: Use the default batch size (32) for best performance
-2. **Error Handling**: Implement proper error handling for partial batch failures
-3. **Rate Limiting**: Consider rate limiting for large batch requests
-4. **Monitoring**: Track batch processing times for optimization
+## Performance
+
+The ensemble approach significantly improves accuracy compared to single-model solutions:
+- Better handling of mixed sentiments
+- More accurate neutral sentiment detection
+- Improved understanding of context and nuance
+- Enhanced handling of informal text and emoticons

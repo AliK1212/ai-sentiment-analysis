@@ -10,14 +10,15 @@ load_dotenv()
 
 app = FastAPI(
     title="Sentiment Analysis API",
-    description="API for analyzing text sentiment using DistilBERT",
+    description="API for analyzing text sentiment using ensemble of models",
     version="1.0.0"
 )
 
-# Add CORS middleware
+# Add CORS middleware with environment variable configuration
+allowed_origins = os.getenv("ALLOWED_ORIGINS", "http://localhost:3000").split(",")
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Adjust in production
+    allow_origins=allowed_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
