@@ -145,30 +145,44 @@ class SentimentAnalyzer:
                 "neutral": round(confidence_scores['neutral'] * 1, 2)
             }
             
-            return {
+            # Base response with sentiment only
+            response = {
                 "sentiment": sentiment,
-                "confidence_scores": confidence_scores,
-                "positive": confidence_scores["positive"],
-                "negative": confidence_scores["negative"],
-                "neutral": confidence_scores["neutral"],
-                "processing_time": 0.5  # Add processing time that frontend expects
+                "processing_time": 0.5
             }
+            
+            # Include confidence scores only if requested
+            if include_confidence_scores:
+                response.update({
+                    "confidence_scores": confidence_scores,
+                    "positive": confidence_scores["positive"],
+                    "negative": confidence_scores["negative"],
+                    "neutral": confidence_scores["neutral"]
+                })
+            
+            return response
 
         except Exception as e:
             print(f"Error in sentiment analysis: {str(e)}")
-            return {
+            error_response = {
                 "error": f"Analysis failed: {str(e)}",
                 "sentiment": "neutral",
-                "confidence_scores": {
+                "processing_time": 0.5
+            }
+            
+            if include_confidence_scores:
+                error_response.update({
+                    "confidence_scores": {
+                        "positive": 0.0,
+                        "negative": 0.0,
+                        "neutral": 100.0
+                    },
                     "positive": 0.0,
                     "negative": 0.0,
                     "neutral": 100.0
-                },
-                "positive": 0.0,
-                "negative": 0.0,
-                "neutral": 100.0,
-                "processing_time": 0.5
-            }
+                })
+            
+            return error_response
 
     def __call__(self, text: str, include_confidence_scores: bool = False) -> Dict:
         """Callable interface for the analyzer."""
