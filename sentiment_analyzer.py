@@ -1,6 +1,6 @@
 import os
 from typing import Dict, Optional
-import openai
+from openai import AsyncOpenAI
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -8,8 +8,8 @@ load_dotenv()
 class SentimentAnalyzer:
     def __init__(self):
         """Initialize the OpenAI-based sentiment analyzer."""
-        openai.api_key = os.getenv('OPENAI_API_KEY')
-        self.model = os.getenv('OPENAI_MODEL', 'gpt-3.5-turbo')
+        self.client = AsyncOpenAI(api_key=os.getenv('OPENAI_API_KEY'))
+        self.model = os.getenv('OPENAI_MODEL', 'gpt-4o-mini-2024-07-18')
         
         # Carefully crafted prompt for accurate sentiment analysis
         self.system_prompt = """You are an expert sentiment analyzer. Your task is to analyze the sentiment of text with high accuracy.
@@ -45,7 +45,7 @@ class SentimentAnalyzer:
             user_prompt = f"Analyze the sentiment of this text: '{cleaned_text}'\n\nProvide the sentiment and confidence scores in this exact format:\nSentiment: [sentiment]\nConfidence Scores:\nPositive: [score]\nNegative: [score]\nNeutral: [score]"
 
             # Get completion from OpenAI
-            response = await openai.ChatCompletion.acreate(
+            response = await self.client.chat.completions.create(
                 model=self.model,
                 messages=[
                     {"role": "system", "content": self.system_prompt},
