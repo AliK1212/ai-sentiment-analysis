@@ -10,7 +10,7 @@ load_dotenv()
 
 app = FastAPI(
     title="Sentiment Analysis API",
-    description="API for analyzing text sentiment using ensemble of models",
+    description="API for analyzing text sentiment using OpenAI",
     version="1.0.0"
 )
 
@@ -31,10 +31,6 @@ class TextInput(BaseModel):
     text: str = Field(..., min_length=1, max_length=5000)
     include_confidence_scores: bool = Field(default=False)
 
-class BatchInput(BaseModel):
-    texts: List[str] = Field(..., min_items=1, max_items=100)
-    include_confidence_scores: bool = Field(default=False)
-
 @app.get("/")
 async def root():
     """Health check endpoint."""
@@ -44,32 +40,16 @@ async def root():
 async def analyze_sentiment(input_data: TextInput):
     """Analyze sentiment of a single text."""
     try:
-        result = analyzer.analyze_text(
+        result = await analyzer.analyze_text(
             input_data.text,
             input_data.include_confidence_scores
         )
         return result
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
-        raise HTTPException(status_code=500, detail="Internal server error")
-
-@app.post("/analyze/batch")
-async def analyze_batch(input_data: BatchInput):
-    """Analyze sentiment of multiple texts."""
-    try:
-        results = analyzer.analyze_batch(
-            input_data.texts,
-            input_data.include_confidence_scores
-        )
-        return results
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-    except Exception as e:
-        raise HTTPException(status_code=500, detail="Internal server error")
+        raise HTTPException(status_code=500, detail=str(e))
 
 if __name__ == "__main__":
     import uvicorn
     host = os.getenv("HOST", "0.0.0.0")
     port = int(os.getenv("PORT", "8000"))
-    uvicorn.run(app, host=host, port=port)
+    uvicorn.run("main:app", host=host, port=port, reload=True)
