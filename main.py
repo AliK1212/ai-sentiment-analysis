@@ -45,15 +45,13 @@ app = FastAPI(
     version="1.0.0"
 )
 
-# Add CORS middleware with environment variable configuration
+# Add CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://localhost:3000", "http://127.0.0.1:5173"],
+    allow_origins=[os.getenv("ALLOWED_ORIGINS", "http://localhost:5173")],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
-    expose_headers=["*"],
-    max_age=600  # Cache preflight requests for 10 minutes
 )
 
 # Initialize sentiment analyzer
@@ -133,6 +131,5 @@ async def analyze_sentiment(input_data: TextInput):
 
 if __name__ == "__main__":
     import uvicorn
-    host = os.getenv("HOST", "0.0.0.0")
-    port = int(os.getenv("PORT", "8000"))
-    uvicorn.run("main:app", host=host, port=port, reload=True)
+    port = int(os.getenv("PORT", 8000))
+    uvicorn.run(app, host="0.0.0.0", port=port)
