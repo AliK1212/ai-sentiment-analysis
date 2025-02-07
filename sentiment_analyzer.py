@@ -1,82 +1,164 @@
 import os
 from typing import Dict, Optional
-from openai import AsyncOpenAI
+import openai
 from dotenv import load_dotenv
+import re
+import json
 
 load_dotenv()
 
 class SentimentAnalyzer:
     def __init__(self):
         """Initialize the OpenAI-based sentiment analyzer."""
-        self.client = AsyncOpenAI(api_key=os.getenv('OPENAI_API_KEY'))
-        self.model = os.getenv('OPENAI_MODEL', 'gpt-4o-mini-2024-07-18')
+        openai.api_key = os.getenv('OPENAI_API_KEY')
+        if not openai.api_key:
+            raise ValueError("OpenAI API key not found in environment variables")
+            
+        self.model = os.getenv('OPENAI_MODEL', 'gpt-4o-mini-2024-07-18')  # Default to gpt-4o-mini if not specified
         
-        # Carefully crafted prompt for accurate sentiment analysis
-        self.system_prompt = """You are an expert sentiment analyzer. Your task is to analyze the sentiment of text with high accuracy.
-        
-        Rules for analysis:
-        1. Consider the full context and nuance of the text
-        2. Account for sarcasm and implicit meanings
-        3. Pay attention to emoticons and emojis
-        4. Consider intensity modifiers (very, extremely, etc.)
-        5. Identify neutral statements accurately
-        
-        Output only one of these sentiments: positive, negative, or neutral.
-        Also provide confidence scores for each category, ensuring they sum to 1.0."""
+        # Comprehensive prompt for highly accurate sentiment analysis
+        self.system_prompt = """You are an expert sentiment analyzer with deep understanding of human emotions, context, and linguistic nuances.
+
+        Your task is to perform a detailed sentiment analysis following these strict rules:
+
+        1. CONTEXT ANALYSIS:
+           - Consider the full context and broader meaning
+           - Account for industry-specific terminology
+           - Understand cultural references and idioms
+           - Consider temporal context (past, present, future implications)
+
+        2. LINGUISTIC NUANCE:
+           - Detect and interpret sarcasm and irony
+           - Analyze tone and voice
+           - Consider intensity modifiers (very, extremely, somewhat)
+           - Evaluate negations and their scope
+           - Account for conditional statements
+
+        3. EMOTIONAL INDICATORS:
+           - Analyze emotional vocabulary
+           - Interpret emoticons and emojis
+           - Consider punctuation patterns (!!!, ...)
+           - Detect subtle emotional undertones
+           - Evaluate emphasis patterns (CAPS, *text*)
+
+        4. OBJECTIVITY:
+           - Identify neutral statements accurately
+           - Distinguish between facts and opinions
+           - Consider technical or academic language
+           - Evaluate balanced perspectives
+
+        5. CONFIDENCE SCORING:
+           - Provide detailed confidence scores
+           - Ensure scores sum to 1.0
+           - Consider ambiguity in scoring
+           - Account for mixed sentiments
+           - Provide higher confidence for clear indicators
+
+        OUTPUT FORMAT (Exactly as shown):
+        Sentiment: [positive/negative/neutral]
+        Confidence Scores:
+        Positive: [0.0-1.0]
+        Negative: [0.0-1.0]
+        Neutral: [0.0-1.0]"""
 
     def preprocess_text(self, text: str) -> str:
-        """Clean and prepare text for sentiment analysis."""
+        """Enhanced text preprocessing while preserving important sentiment indicators."""
         if not text:
             return ""
         
-        # Remove excessive whitespace
+        # Normalize whitespace while preserving emoji and special characters
         text = " ".join(text.split())
-        return text
+        
+        # Standardize quotes and apostrophes
+        text = text.replace('"', '"').replace('"', '"').replace(''', "'").replace(''', "'")
+        
+        # Preserve emoticons and emojis while cleaning text
+        text = re.sub(r'[^\w\s:;)(><}{}\[\]\\/@#$%^&*+=|~`!?,.\-\'"]+', ' ', text)
+        
+        return text.strip()
 
     async def analyze_text(self, text: str, include_confidence_scores: bool = False) -> Dict:
-        """Analyze the sentiment of the given text using OpenAI."""
+        """Analyze the sentiment of the given text using OpenAI with enhanced accuracy."""
         try:
             # Preprocess the text
             cleaned_text = self.preprocess_text(text)
             if not cleaned_text:
                 return {"error": "Empty text provided"}
 
-            # Create the user prompt
-            user_prompt = f"Analyze the sentiment of this text: '{cleaned_text}'\n\nProvide the sentiment and confidence scores in this exact format:\nSentiment: [sentiment]\nConfidence Scores:\nPositive: [score]\nNegative: [score]\nNeutral: [score]"
+            # Create a detailed analysis prompt
+            user_prompt = f"""Analyze the sentiment of this text with high precision:
 
-            # Get completion from OpenAI
-            response = await self.client.chat.completions.create(
+            TEXT: '{cleaned_text}'
+
+            Consider:
+            1. Overall emotional tone
+            2. Presence of sarcasm or irony
+            3. Cultural context
+            4. Technical language
+            5. Emotional intensity
+
+            Provide sentiment and confidence scores in the exact format specified."""
+
+            # Get completion from OpenAI with strict temperature control
+            completion = await openai.ChatCompletion.acreate(
                 model=self.model,
                 messages=[
                     {"role": "system", "content": self.system_prompt},
                     {"role": "user", "content": user_prompt}
                 ],
-                temperature=0.3  # Lower temperature for more consistent results
+                temperature=0.3,  # Low temperature for consistent results
+                max_tokens=150,   # Limit response length for faster processing
+                presence_penalty=0.0,  # Neutral presence penalty
+                frequency_penalty=0.0   # Neutral frequency penalty
             )
 
-            # Parse the response
-            result = response.choices[0].message.content
-            
-            # Extract sentiment and confidence scores
-            lines = result.strip().split('\n')
-            sentiment = lines[0].split(': ')[1].lower()
-            confidence_scores = {
-                'positive': float(lines[2].split(': ')[1]),
-                'negative': float(lines[3].split(': ')[1]),
-                'neutral': float(lines[4].split(': ')[1])
-            }
+            # Parse the response with error handling
+            result = completion['choices'][0]['message']['content']
+            try:
+                lines = [line.strip() for line in result.strip().split('\n')]
+                sentiment = lines[0].split(': ')[1].lower()
+                confidence_scores = {
+                    'positive': float(lines[2].split(': ')[1]),
+                    'negative': float(lines[3].split(': ')[1]),
+                    'neutral': float(lines[4].split(': ')[1])
+                }
+                
+                # Validate confidence scores
+                total = sum(confidence_scores.values())
+                if not (0.99 <= total <= 1.01):  # Allow small floating-point variance
+                    # Normalize scores
+                    confidence_scores = {k: v/total for k, v in confidence_scores.items()}
+                
+                # Validate sentiment value
+                if sentiment not in ['positive', 'negative', 'neutral']:
+                    raise ValueError(f"Invalid sentiment value: {sentiment}")
 
-            # Prepare response
-            response = {
+            except Exception as e:
+                print(f"Error parsing OpenAI response: {str(e)}")
+                print(f"Raw response: {result}")
+                raise ValueError("Failed to parse sentiment analysis results")
+
+            # Format response exactly as frontend expects
+            return {
                 "sentiment": sentiment,
-                "confidence_scores": confidence_scores if include_confidence_scores else None
+                "confidence": {
+                    "positive": round(confidence_scores['positive'] * 100, 2),
+                    "negative": round(confidence_scores['negative'] * 100, 2),
+                    "neutral": round(confidence_scores['neutral'] * 100, 2)
+                }
             }
-
-            return response
 
         except Exception as e:
             print(f"Error in sentiment analysis: {str(e)}")
-            return {"error": f"Analysis failed: {str(e)}"}
+            return {
+                "error": f"Analysis failed: {str(e)}",
+                "sentiment": "neutral",
+                "confidence": {
+                    "positive": 0.0,
+                    "negative": 0.0,
+                    "neutral": 100.0
+                }
+            }
 
     def __call__(self, text: str, include_confidence_scores: bool = False) -> Dict:
         """Callable interface for the analyzer."""
