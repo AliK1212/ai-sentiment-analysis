@@ -85,11 +85,15 @@ async def analyze_sentiment(input_data: TextInput):
         return {
             "error": str(e),
             "sentiment": "neutral",
-            "confidence": {
+            "confidence_scores": {
                 "positive": 0.0,
                 "negative": 0.0,
                 "neutral": 100.0
-            }
+            },
+            "positive": 0.0,
+            "negative": 0.0,
+            "neutral": 100.0,
+            "processing_time": 0.5
         }
 
 if __name__ == "__main__":

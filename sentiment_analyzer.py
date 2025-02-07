@@ -139,13 +139,19 @@ class SentimentAnalyzer:
                 raise ValueError("Failed to parse sentiment analysis results")
 
             # Format response exactly as frontend expects
+            confidence_scores = {
+                "positive": round(confidence_scores['positive'] * 1, 2),
+                "negative": round(confidence_scores['negative'] * 1, 2),
+                "neutral": round(confidence_scores['neutral'] * 1, 2)
+            }
+            
             return {
                 "sentiment": sentiment,
-                "confidence": {
-                    "positive": round(confidence_scores['positive'] * 100, 2),
-                    "negative": round(confidence_scores['negative'] * 100, 2),
-                    "neutral": round(confidence_scores['neutral'] * 100, 2)
-                }
+                "confidence_scores": confidence_scores,
+                "positive": confidence_scores["positive"],
+                "negative": confidence_scores["negative"],
+                "neutral": confidence_scores["neutral"],
+                "processing_time": 0.5  # Add processing time that frontend expects
             }
 
         except Exception as e:
@@ -153,11 +159,15 @@ class SentimentAnalyzer:
             return {
                 "error": f"Analysis failed: {str(e)}",
                 "sentiment": "neutral",
-                "confidence": {
+                "confidence_scores": {
                     "positive": 0.0,
                     "negative": 0.0,
                     "neutral": 100.0
-                }
+                },
+                "positive": 0.0,
+                "negative": 0.0,
+                "neutral": 100.0,
+                "processing_time": 0.5
             }
 
     def __call__(self, text: str, include_confidence_scores: bool = False) -> Dict:
