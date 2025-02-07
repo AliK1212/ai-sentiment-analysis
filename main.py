@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from typing import List, Optional
@@ -8,6 +8,7 @@ import openai
 import logging
 from dotenv import load_dotenv
 import traceback
+from fastapi.responses import JSONResponse
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -48,11 +49,22 @@ app = FastAPI(
 # Add CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[os.getenv("ALLOWED_ORIGINS", "http://localhost:5173")],
+    allow_origins=["https://frontend-portfolio-aomn.onrender.com"],  # Only allow the frontend website
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+@app.options("/{path:path}")
+async def options_route(request: Request):
+    return JSONResponse(
+        content="OK",
+        headers={
+            "Access-Control-Allow-Origin": "https://frontend-portfolio-aomn.onrender.com",
+            "Access-Control-Allow-Methods": "POST, GET, DELETE, OPTIONS",
+            "Access-Control-Allow-Headers": "Content-Type",
+        }
+    )
 
 # Initialize sentiment analyzer
 analyzer = SentimentAnalyzer()
