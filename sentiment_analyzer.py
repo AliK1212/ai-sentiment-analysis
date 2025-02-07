@@ -1,237 +1,84 @@
-from transformers import AutoTokenizer, AutoModelForSequenceClassification, pipeline
-import torch
-from typing import Dict, List, Optional
 import os
+from typing import Dict, Optional
+import openai
 from dotenv import load_dotenv
-import numpy as np
-from time import time
-import re
-from textblob import TextBlob
-from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
 
 load_dotenv()
 
 class SentimentAnalyzer:
     def __init__(self):
-        # Load multiple models for ensemble approach
-        self.models = {
-            'distilbert': {
-                'name': os.getenv('DISTILBERT_MODEL', 'distilbert-base-uncased-finetuned-sst-2-english'),
-                'model': None,
-                'tokenizer': None,
-                'weight': float(os.getenv('DISTILBERT_WEIGHT', '0.3'))
-            },
-            'roberta': {
-                'name': os.getenv('ROBERTA_MODEL', 'cardiffnlp/twitter-roberta-base-sentiment-latest'),
-                'model': None,
-                'tokenizer': None,
-                'weight': float(os.getenv('ROBERTA_WEIGHT', '0.3'))
-            }
-        }
+        """Initialize the OpenAI-based sentiment analyzer."""
+        openai.api_key = os.getenv('OPENAI_API_KEY')
+        self.model = os.getenv('OPENAI_MODEL', 'gpt-3.5-turbo')
         
-        self.cache_dir = os.getenv('CACHE_DIR', '.cache')
-        self.max_length = int(os.getenv('MAX_LENGTH', '512'))
-        self.batch_size = int(os.getenv('BATCH_SIZE', '32'))
+        # Carefully crafted prompt for accurate sentiment analysis
+        self.system_prompt = """You are an expert sentiment analyzer. Your task is to analyze the sentiment of text with high accuracy.
         
-        # Initialize models and tokenizers
-        for model_key, model_info in self.models.items():
-            try:
-                model_info['tokenizer'] = AutoTokenizer.from_pretrained(
-                    model_info['name'],
-                    cache_dir=self.cache_dir
-                )
-                model_info['model'] = AutoModelForSequenceClassification.from_pretrained(
-                    model_info['name'],
-                    cache_dir=self.cache_dir
-                )
-                model_info['model'].eval()
-            except Exception as e:
-                print(f"Error loading {model_key} model: {str(e)}")
-                # Fallback to DistilBERT if other models fail
-                if model_key != 'distilbert':
-                    self.models[model_key]['weight'] = 0
-                    self.models['distilbert']['weight'] = 1.0
+        Rules for analysis:
+        1. Consider the full context and nuance of the text
+        2. Account for sarcasm and implicit meanings
+        3. Pay attention to emoticons and emojis
+        4. Consider intensity modifiers (very, extremely, etc.)
+        5. Identify neutral statements accurately
         
-        # Initialize VADER sentiment analyzer
-        self.vader = SentimentIntensityAnalyzer()
-        self.vader_weight = float(os.getenv('VADER_WEIGHT', '0.2'))
-        
-        # Initialize TextBlob weight
-        self.textblob_weight = float(os.getenv('TEXTBLOB_WEIGHT', '0.2'))
-        
-        # Normalize weights in case some models failed to load
-        total_weight = sum(m['weight'] for m in self.models.values()) + self.vader_weight + self.textblob_weight
-        if total_weight != 1.0:
-            factor = 1.0 / total_weight
-            for model_info in self.models.values():
-                model_info['weight'] *= factor
-            self.vader_weight *= factor
-            self.textblob_weight *= factor
-        
-        # Map label indices to sentiment labels
-        self.id2label = {
-            0: "negative",
-            1: "positive"
-        }
+        Output only one of these sentiments: positive, negative, or neutral.
+        Also provide confidence scores for each category, ensuring they sum to 1.0."""
 
-    def _preprocess_text(self, text: str) -> str:
-        """Enhanced text preprocessing."""
+    def preprocess_text(self, text: str) -> str:
+        """Clean and prepare text for sentiment analysis."""
         if not text:
-            return text
-            
-        # Convert to lowercase
-        text = text.lower()
+            return ""
         
-        # Remove URLs
-        text = re.sub(r'http\S+|www\S+|https\S+', '', text, flags=re.MULTILINE)
-        
-        # Remove email addresses
-        text = re.sub(r'\S+@\S+', '', text)
-        
-        # Remove special characters but keep emoticons
-        text = re.sub(r'[^\w\s:;)(><]', ' ', text)
-        
-        # Remove extra whitespace
-        text = ' '.join(text.split())
-        
+        # Remove excessive whitespace
+        text = " ".join(text.split())
         return text
 
-    def _get_ensemble_prediction(self, text: str) -> Dict:
-        """Get predictions from multiple models and combine them."""
-        predictions = {}
-        
-        # Get transformer model predictions
-        for model_key, model_info in self.models.items():
-            if model_info['weight'] > 0:
-                try:
-                    inputs = model_info['tokenizer'](
-                        text,
-                        truncation=True,
-                        max_length=self.max_length,
-                        padding=True,
-                        return_tensors="pt"
-                    )
-                    
-                    with torch.no_grad():
-                        outputs = model_info['model'](**inputs)
-                        probs = torch.nn.functional.softmax(outputs.logits, dim=1)[0]
-                        
-                        if model_key == 'roberta':
-                            predictions[model_key] = {
-                                "negative": float(probs[0]),
-                                "positive": float(probs[2])  # RoBERTa has 3 classes
-                            }
-                        else:
-                            predictions[model_key] = {
-                                "negative": float(probs[0]),
-                                "positive": float(probs[1])
-                            }
-                except Exception as e:
-                    print(f"Error in {model_key} prediction: {str(e)}")
-                    model_info['weight'] = 0
-        
-        # Get VADER prediction if weight > 0
-        if self.vader_weight > 0:
-            try:
-                vader_scores = self.vader.polarity_scores(text)
-                predictions['vader'] = {
-                    "negative": vader_scores['neg'],
-                    "positive": vader_scores['pos']
-                }
-            except Exception as e:
-                print(f"Error in VADER prediction: {str(e)}")
-                self.vader_weight = 0
-        
-        # Get TextBlob prediction if weight > 0
-        if self.textblob_weight > 0:
-            try:
-                blob = TextBlob(text)
-                textblob_polarity = (blob.sentiment.polarity + 1) / 2  # Normalize to 0-1
-                predictions['textblob'] = {
-                    "negative": 1 - textblob_polarity,
-                    "positive": textblob_polarity
-                }
-            except Exception as e:
-                print(f"Error in TextBlob prediction: {str(e)}")
-                self.textblob_weight = 0
-        
-        # Combine predictions with weighted average
-        final_scores = {"positive": 0.0, "negative": 0.0}
-        total_weight = 0.0
-        
-        for model_key, model_info in self.models.items():
-            if model_key in predictions and model_info['weight'] > 0:
-                weight = model_info['weight']
-                final_scores["negative"] += predictions[model_key]["negative"] * weight
-                final_scores["positive"] += predictions[model_key]["positive"] * weight
-                total_weight += weight
-        
-        if 'vader' in predictions and self.vader_weight > 0:
-            final_scores["negative"] += predictions['vader']["negative"] * self.vader_weight
-            final_scores["positive"] += predictions['vader']["positive"] * self.vader_weight
-            total_weight += self.vader_weight
+    async def analyze_text(self, text: str, include_confidence_scores: bool = False) -> Dict:
+        """Analyze the sentiment of the given text using OpenAI."""
+        try:
+            # Preprocess the text
+            cleaned_text = self.preprocess_text(text)
+            if not cleaned_text:
+                return {"error": "Empty text provided"}
+
+            # Create the user prompt
+            user_prompt = f"Analyze the sentiment of this text: '{cleaned_text}'\n\nProvide the sentiment and confidence scores in this exact format:\nSentiment: [sentiment]\nConfidence Scores:\nPositive: [score]\nNegative: [score]\nNeutral: [score]"
+
+            # Get completion from OpenAI
+            response = await openai.ChatCompletion.acreate(
+                model=self.model,
+                messages=[
+                    {"role": "system", "content": self.system_prompt},
+                    {"role": "user", "content": user_prompt}
+                ],
+                temperature=0.3  # Lower temperature for more consistent results
+            )
+
+            # Parse the response
+            result = response.choices[0].message.content
             
-        if 'textblob' in predictions and self.textblob_weight > 0:
-            final_scores["negative"] += predictions['textblob']["negative"] * self.textblob_weight
-            final_scores["positive"] += predictions['textblob']["positive"] * self.textblob_weight
-            total_weight += self.textblob_weight
-        
-        # Normalize if not all models contributed
-        if total_weight > 0 and total_weight != 1.0:
-            final_scores["negative"] /= total_weight
-            final_scores["positive"] /= total_weight
-        
-        # Calculate neutral score based on confidence difference
-        confidence_diff = abs(final_scores['positive'] - final_scores['negative'])
-        final_scores['neutral'] = max(1 - confidence_diff, 0)
-        
-        return final_scores
+            # Extract sentiment and confidence scores
+            lines = result.strip().split('\n')
+            sentiment = lines[0].split(': ')[1].lower()
+            confidence_scores = {
+                'positive': float(lines[2].split(': ')[1]),
+                'negative': float(lines[3].split(': ')[1]),
+                'neutral': float(lines[4].split(': ')[1])
+            }
 
-    def analyze_text(self, text: str, include_confidence_scores: bool = False) -> Dict:
-        """Analyze the sentiment of a given text using ensemble approach."""
-        start_time = time()
-        
-        # Input validation
-        if not text or not isinstance(text, str):
-            raise ValueError("Invalid input text")
-        
-        # Preprocess text
-        processed_text = self._preprocess_text(text)
-        
-        # Get ensemble predictions
-        scores = self._get_ensemble_prediction(processed_text)
-        
-        # Determine final sentiment
-        if scores['neutral'] > 0.4:
-            sentiment = "neutral"
-        elif scores['positive'] > scores['negative']:
-            sentiment = "positive"
-        else:
-            sentiment = "negative"
-        
-        # Prepare response
-        response = {
-            "sentiment": sentiment,
-            "processing_time": time() - start_time
-        }
-        
-        # Add confidence scores if requested
-        if include_confidence_scores:
-            response["confidence_scores"] = scores
-        
-        return response
+            # Prepare response
+            response = {
+                "sentiment": sentiment,
+                "confidence_scores": confidence_scores if include_confidence_scores else None
+            }
 
-    def analyze_batch(self, texts: List[str], include_confidence_scores: bool = False) -> List[Dict]:
-        """Analyze sentiment for a batch of texts."""
-        results = []
-        
-        # Process texts in batches
-        for i in range(0, len(texts), self.batch_size):
-            batch_texts = texts[i:i + self.batch_size]
-            batch_results = [
-                self.analyze_text(text, include_confidence_scores)
-                for text in batch_texts
-            ]
-            results.extend(batch_results)
-        
-        return results
+            return response
+
+        except Exception as e:
+            print(f"Error in sentiment analysis: {str(e)}")
+            return {"error": f"Analysis failed: {str(e)}"}
+
+    def __call__(self, text: str, include_confidence_scores: bool = False) -> Dict:
+        """Callable interface for the analyzer."""
+        import asyncio
+        return asyncio.run(self.analyze_text(text, include_confidence_scores))
