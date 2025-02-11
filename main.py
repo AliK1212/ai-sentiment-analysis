@@ -64,26 +64,38 @@ except Exception as e:
     raise
 
 # Add CORS middleware
+origins = [
+    "https://frontend-portfolio-aomn.onrender.com",  # Production frontend
+    "https://deerk-portfolio.onrender.com",          # Alternative production domain
+    "http://localhost:3000",                         # Local development
+    "http://localhost:5173",                         # Vite dev server
+    "http://localhost:4173",                         # Vite preview
+]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Allow all origins during testing
+    allow_origins=origins,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "OPTIONS"],
+    allow_headers=["*"],  # Allow all headers since browsers may add their own
     expose_headers=["*"]
 )
 
 @app.options("/{path:path}")
 async def options_route(request: Request):
-    return JSONResponse(
-        content="OK",
-        headers={
-            "Access-Control-Allow-Origin": "*",
-            "Access-Control-Allow-Methods": "*",
-            "Access-Control-Allow-Headers": "*",
-            "Access-Control-Max-Age": "3600",
-        }
-    )
+    origin = request.headers.get("Origin", "")
+    if origin in origins:
+        return JSONResponse(
+            content="OK",
+            headers={
+                "Access-Control-Allow-Origin": origin,
+                "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+                "Access-Control-Allow-Headers": "*",  # Allow all headers
+                "Access-Control-Allow-Credentials": "true",
+                "Access-Control-Max-Age": "3600",
+            }
+        )
+    return JSONResponse(status_code=400, content={"message": "Invalid origin"})
 
 # Initialize sentiment analyzer
 analyzer = SentimentAnalyzer()
@@ -142,9 +154,16 @@ async def analyze_sentiment(request: Request, input_data: TextInput):
     try:
         logger.info(f"Received request with data: {input_data}")
         
+        # Check origin
+        origin = request.headers.get("Origin", "")
+        if origin not in origins:
+            raise HTTPException(status_code=400, detail="Invalid origin")
+        
+        # Extract text and include_confidence_scores from input
         text = input_data.text
         include_confidence_scores = input_data.include_confidence_scores
 
+        # Analyze the text
         result = await analyzer.analyze_text(text, include_confidence_scores)
         
         if "error" in result:
@@ -154,13 +173,10 @@ async def analyze_sentiment(request: Request, input_data: TextInput):
                 detail=result["error"]
             )
 
+        # Create response with explicit CORS headers
         response = JSONResponse(content=result)
-        origin = request.headers.get("Origin")
-        if origin:  
-            response.headers["Access-Control-Allow-Origin"] = origin
-            response.headers["Access-Control-Allow-Credentials"] = "true"
-            response.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
-            response.headers["Access-Control-Allow-Headers"] = "Content-Type, Accept, Authorization"
+        response.headers["Access-Control-Allow-Origin"] = origin
+        response.headers["Access-Control-Allow-Credentials"] = "true"
         
         logger.info(f"Sending response: {result}")
         return response
