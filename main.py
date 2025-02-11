@@ -76,21 +76,6 @@ origins = [
     "http://localhost:8082",
     "http://localhost:8083",
     "http://localhost:8084",
-    "http://localhost:8085",
-    "http://localhost:8086",
-    "http://localhost:8087",
-    "http://localhost:8088",
-    "http://localhost:8089",
-    "http://localhost:8090",
-    "http://localhost:8091",
-    "http://localhost:8092",
-    "http://localhost:8093",
-    "http://localhost:8094",
-    "http://localhost:8095",
-    "http://localhost:8096",
-    "http://localhost:8097",
-    "http://localhost:8098",
-    "http://localhost:8099",
 ]
 
 app.add_middleware(
@@ -99,8 +84,7 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
-    expose_headers=["*"],
-    max_age=3600,
+    expose_headers=["*"]
 )
 
 @app.options("/{path:path}")
