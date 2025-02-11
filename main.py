@@ -64,13 +64,40 @@ except Exception as e:
     raise
 
 # Add CORS middleware
+origins = [
+    "https://frontend-portfolio-aomn.onrender.com",
+    "https://deerk-portfolio.onrender.com",
+    "http://localhost:3000",
+    "http://localhost:5173",
+    "http://localhost:4173",
+    "https://*.onrender.com",
+    "http://localhost:8080",
+    "http://localhost:8081",
+    "http://localhost:8082",
+    "http://localhost:8083",
+    "http://localhost:8084",
+]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Temporarily allow all origins for testing
-    allow_credentials=False,  # Set to False when using "*"
+    allow_origins=origins,
+    allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["*"]
 )
+
+@app.options("/{path:path}")
+async def options_route(request: Request):
+    return JSONResponse(
+        content="OK",
+        headers={
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+            "Access-Control-Allow-Headers": "*",
+            "Access-Control-Max-Age": "3600",
+        }
+    )
 
 # Initialize sentiment analyzer
 analyzer = SentimentAnalyzer()
@@ -90,7 +117,7 @@ async def root(request: Request):
     return {"status": "ok", "message": "Sentiment Analysis API is running"}
 
 @app.post("/analyze/batch")
-@limiter.limit("10/minute")
+@limiter.limit("5/minute")
 async def analyze_batch(request: Request, input_data: BatchTextInput):
     """Analyze sentiment of multiple texts in batch."""
     try:
@@ -108,7 +135,12 @@ async def analyze_batch(request: Request, input_data: BatchTextInput):
                 })
             else:
                 results.append(result)
-        return {"results": results}
+        response = JSONResponse(content={"results": results})
+        origin = request.headers.get("Origin")
+        if origin in origins:
+            response.headers["Access-Control-Allow-Origin"] = origin
+            response.headers["Access-Control-Allow-Credentials"] = "true"
+        return response
     except Exception as e:
         logger.error(f"Error in batch analysis: {str(e)}")
         logger.error(traceback.format_exc())
@@ -131,7 +163,12 @@ async def analyze_sentiment(request: Request, input_data: TextInput):
                 status_code=500,
                 detail=result["error"]
             )
-        return result
+        response = JSONResponse(content=result)
+        origin = request.headers.get("Origin")
+        if origin in origins:
+            response.headers["Access-Control-Allow-Origin"] = origin
+            response.headers["Access-Control-Allow-Credentials"] = "true"
+        return response
     except HTTPException as he:
         raise he
     except Exception as e:
