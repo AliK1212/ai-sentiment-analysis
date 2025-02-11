@@ -64,45 +64,13 @@ except Exception as e:
     raise
 
 # Add CORS middleware
-origins = [
-    "https://frontend-portfolio-aomn.onrender.com",
-    "https://deerk-portfolio.onrender.com",
-    "http://localhost:3000",
-    "http://localhost:5173",
-    "http://localhost:4173",
-    "https://*.onrender.com",
-    "http://localhost:8080",
-    "http://localhost:8081",
-    "http://localhost:8082",
-    "http://localhost:8083",
-    "http://localhost:8084",
-]
-
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins,
-    allow_credentials=True,
-    allow_methods=["GET", "POST", "OPTIONS"],
-    allow_headers=["Content-Type", "Accept", "Authorization", "Origin", "X-Requested-With"],
-    expose_headers=["*"],
-    max_age=3600,
+    allow_origins=["*"],  # Temporarily allow all origins for testing
+    allow_credentials=False,  # Set to False when using "*"
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
-
-@app.options("/{path:path}")
-async def options_route(request: Request):
-    origin = request.headers.get("Origin")
-    if origin in origins or any(origin.endswith(domain.replace("*", "")) for domain in origins if "*" in domain):
-        return JSONResponse(
-            content="OK",
-            headers={
-                "Access-Control-Allow-Origin": origin,
-                "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-                "Access-Control-Allow-Headers": "Content-Type, Accept, Authorization, Origin, X-Requested-With",
-                "Access-Control-Allow-Credentials": "true",
-                "Access-Control-Max-Age": "3600",
-            }
-        )
-    return JSONResponse(content="Not allowed", status_code=400)
 
 # Initialize sentiment analyzer
 analyzer = SentimentAnalyzer()
