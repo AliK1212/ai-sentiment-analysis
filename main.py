@@ -9,12 +9,35 @@ import openai
 import logging
 from dotenv import load_dotenv
 import traceback
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
+import redis
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 load_dotenv()
+
+app = FastAPI(
+    title="AI Sentiment Analysis",
+    description="AI-Powered Sentiment Analysis Service",
+    version="1.0.0"
+)
+
+# Initialize rate limiter
+limiter = Limiter(key_func=get_remote_address)
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+# Initialize Redis
+redis_client = redis.Redis(
+    host=os.getenv("RENDER_REDIS_HOST", "localhost"),
+    port=int(os.getenv("RENDER_REDIS_PORT", 6379)),
+    password=os.getenv("RENDER_REDIS_PASSWORD", ""),
+    decode_responses=True
+)
 
 # Initialize OpenAI client
 openai.api_key = os.getenv("OPENAI_API_KEY")
@@ -40,19 +63,44 @@ except Exception as e:
     logger.error(traceback.format_exc())
     raise
 
-app = FastAPI(
-    title="Sentiment Analysis API",
-    description="API for analyzing text sentiment using OpenAI",
-    version="1.0.0"
-)
-
 # Add CORS middleware
+origins = [
+    "https://frontend-portfolio-aomn.onrender.com",
+    "https://deerk-portfolio.onrender.com",
+    "http://localhost:3000",
+    "http://localhost:5173",
+    "http://localhost:4173",
+    "https://*.onrender.com",
+    "http://localhost:8080",
+    "http://localhost:8081",
+    "http://localhost:8082",
+    "http://localhost:8083",
+    "http://localhost:8084",
+    "http://localhost:8085",
+    "http://localhost:8086",
+    "http://localhost:8087",
+    "http://localhost:8088",
+    "http://localhost:8089",
+    "http://localhost:8090",
+    "http://localhost:8091",
+    "http://localhost:8092",
+    "http://localhost:8093",
+    "http://localhost:8094",
+    "http://localhost:8095",
+    "http://localhost:8096",
+    "http://localhost:8097",
+    "http://localhost:8098",
+    "http://localhost:8099",
+]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["https://frontend-portfolio-aomn.onrender.com"],  # Only allow the frontend website
+    allow_origins=origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["*"],
+    max_age=3600,
 )
 
 @app.options("/{path:path}")
@@ -60,9 +108,10 @@ async def options_route(request: Request):
     return JSONResponse(
         content="OK",
         headers={
-            "Access-Control-Allow-Origin": "https://frontend-portfolio-aomn.onrender.com",
-            "Access-Control-Allow-Methods": "POST, GET, DELETE, OPTIONS",
-            "Access-Control-Allow-Headers": "Content-Type",
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Methods": "*",
+            "Access-Control-Allow-Headers": "*",
+            "Access-Control-Max-Age": "3600",
         }
     )
 
@@ -78,12 +127,14 @@ class BatchTextInput(BaseModel):
     include_confidence_scores: bool = Field(default=False)
 
 @app.get("/")
-async def root():
+@limiter.limit("10/minute")
+async def root(request: Request):
     """Health check endpoint."""
     return {"status": "ok", "message": "Sentiment Analysis API is running"}
 
 @app.post("/analyze/batch")
-async def analyze_batch(input_data: BatchTextInput):
+@limiter.limit("10/minute")
+async def analyze_batch(request: Request, input_data: BatchTextInput):
     """Analyze sentiment of multiple texts in batch."""
     try:
         results = []
@@ -102,19 +153,16 @@ async def analyze_batch(input_data: BatchTextInput):
                 results.append(result)
         return {"results": results}
     except Exception as e:
-        logger.error(f"Error in analyze_batch: {str(e)}")
+        logger.error(f"Error in batch analysis: {str(e)}")
         logger.error(traceback.format_exc())
-        return {
-            "error": str(e),
-            "results": [{
-                "error": str(e),
-                "sentiment": "neutral",
-                "processing_time": 0.5
-            } for _ in input_data.texts]
-        }
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error processing batch request: {str(e)}"
+        )
 
 @app.post("/analyze")
-async def analyze_sentiment(input_data: TextInput):
+@limiter.limit("10/minute")
+async def analyze_sentiment(request: Request, input_data: TextInput):
     """Analyze sentiment of a single text."""
     try:
         result = await analyzer.analyze_text(
@@ -122,24 +170,20 @@ async def analyze_sentiment(input_data: TextInput):
             input_data.include_confidence_scores
         )
         if "error" in result:
-            raise HTTPException(status_code=500, detail=result["error"])
+            raise HTTPException(
+                status_code=500,
+                detail=result["error"]
+            )
         return result
+    except HTTPException as he:
+        raise he
     except Exception as e:
-        logger.error(f"Error in analyze_sentiment: {str(e)}")
+        logger.error(f"Error in sentiment analysis: {str(e)}")
         logger.error(traceback.format_exc())
-        return {
-            "error": str(e),
-            "sentiment": "neutral",
-            "confidence_scores": {
-                "positive": 0.0,
-                "negative": 0.0,
-                "neutral": 100.0
-            },
-            "positive": 0.0,
-            "negative": 0.0,
-            "neutral": 100.0,
-            "processing_time": 0.5
-        }
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error analyzing sentiment: {str(e)}"
+        )
 
 if __name__ == "__main__":
     import uvicorn
