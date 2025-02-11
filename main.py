@@ -70,6 +70,7 @@ origins = [
     "http://localhost:3000",
     "http://localhost:5173",
     "http://localhost:4173",
+    "https://*.onrender.com",
     "http://localhost:8080",
     "http://localhost:8081",
     "http://localhost:8082",
@@ -81,10 +82,22 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
     allow_credentials=True,
-    allow_methods=["GET", "POST", "OPTIONS"],
-    allow_headers=["Content-Type", "Accept", "Authorization"],
+    allow_methods=["*"],
+    allow_headers=["*"],
     expose_headers=["*"]
 )
+
+@app.options("/{path:path}")
+async def options_route(request: Request):
+    return JSONResponse(
+        content="OK",
+        headers={
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+            "Access-Control-Allow-Headers": "*",
+            "Access-Control-Max-Age": "3600",
+        }
+    )
 
 # Initialize sentiment analyzer
 analyzer = SentimentAnalyzer()
