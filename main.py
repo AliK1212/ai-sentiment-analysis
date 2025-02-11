@@ -64,23 +64,9 @@ except Exception as e:
     raise
 
 # Add CORS middleware
-origins = [
-    "https://frontend-portfolio-aomn.onrender.com",
-    "https://deerk-portfolio.onrender.com",
-    "http://localhost:3000",
-    "http://localhost:5173",
-    "http://localhost:4173",
-    "https://*.onrender.com",
-    "http://localhost:8080",
-    "http://localhost:8081",
-    "http://localhost:8082",
-    "http://localhost:8083",
-    "http://localhost:8084",
-]
-
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins,
+    allow_origins=["*"],  # Allow all origins during testing
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -93,7 +79,7 @@ async def options_route(request: Request):
         content="OK",
         headers={
             "Access-Control-Allow-Origin": "*",
-            "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+            "Access-Control-Allow-Methods": "*",
             "Access-Control-Allow-Headers": "*",
             "Access-Control-Max-Age": "3600",
         }
@@ -137,7 +123,7 @@ async def analyze_batch(request: Request, input_data: BatchTextInput):
                 results.append(result)
         response = JSONResponse(content={"results": results})
         origin = request.headers.get("Origin")
-        if origin in origins:
+        if origin:
             response.headers["Access-Control-Allow-Origin"] = origin
             response.headers["Access-Control-Allow-Credentials"] = "true"
         return response
@@ -154,21 +140,31 @@ async def analyze_batch(request: Request, input_data: BatchTextInput):
 async def analyze_sentiment(request: Request, input_data: TextInput):
     """Analyze sentiment of a single text."""
     try:
-        result = await analyzer.analyze_text(
-            input_data.text,
-            input_data.include_confidence_scores
-        )
+        logger.info(f"Received request with data: {input_data}")
+        
+        text = input_data.text
+        include_confidence_scores = input_data.include_confidence_scores
+
+        result = await analyzer.analyze_text(text, include_confidence_scores)
+        
         if "error" in result:
+            logger.error(f"Analysis error: {result['error']}")
             raise HTTPException(
                 status_code=500,
                 detail=result["error"]
             )
+
         response = JSONResponse(content=result)
         origin = request.headers.get("Origin")
-        if origin in origins:
+        if origin:  
             response.headers["Access-Control-Allow-Origin"] = origin
             response.headers["Access-Control-Allow-Credentials"] = "true"
+            response.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
+            response.headers["Access-Control-Allow-Headers"] = "Content-Type, Accept, Authorization"
+        
+        logger.info(f"Sending response: {result}")
         return response
+
     except HTTPException as he:
         raise he
     except Exception as e:
